@@ -1,39 +1,37 @@
 package kube
 
 import (
+	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
-	monitoring "cloud.google.com/go/monitoring/apiv3"
 	log "github.com/Sirupsen/logrus"
-
-	"k8s.io/api/core/v1"
-
-	"github.com/golang/protobuf/ptypes/timestamp"
-	"golang.org/x/net/context"
-	"google.golang.org/api/iterator"
-	monitoringpb "google.golang.org/genproto/googleapis/monitoring/v3"
+	promapi "github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
+	k8sv1 "k8s.io/api/core/v1"
 )
 
-type StackDriverClient struct {
+type PrometheusClient struct {
 	ctx     context.Context
-	client  *monitoring.MetricClient
-	project string
+	client  v1.API
+	address string
 }
 
-func NewStackDriverClient(project string) *StackDriverClient {
-	ctx := context.Background()
-	c, err := monitoring.NewMetricClient(ctx)
+func NewPrometheusClient(address string) (*PrometheusClient, error) {
+	client, err := promapi.NewClient(promapi.Config{
+		Address: address,
+	})
 	if err != nil {
-		panic(err.Error())
+		log.Fatal("Failed to create Prometheus client: %s", err)
 	}
-	return &StackDriverClient{
-		ctx:     ctx,
-		client:  c,
-		project: project,
-	}
+
+	return &PrometheusClient{
+		ctx:     context.Background(),
+		client:  v1.NewAPI(client),
+		address: address,
+	}, nil
 }
 
 type MetricJob struct {
@@ -41,180 +39,112 @@ type MetricJob struct {
 	PodName       string
 	PodUID        string
 	Duration      time.Duration
-	MetricType    v1.ResourceName
+	MetricType    k8sv1.ResourceName
 	jobs          <-chan *MetricJob
 	collector     chan<- *ContainerMetrics
 }
 
-func sortPointsAsc(points []*monitoringpb.Point) {
+func sortPointsAsc(points model.Matrix) {
 	sort.Slice(points, func(i, j int) bool {
-		return points[i].Interval.EndTime.Seconds > points[j].Interval.EndTime.Seconds
+		return points[i].Values[0].Timestamp.Before(points[j].Values[0].Timestamp)
 	})
 }
 
-func evaluateMemMetrics(it *monitoring.TimeSeriesIterator) *ContainerMetrics {
-
-	var points []*monitoringpb.Point
-	set := make(map[int64]int)
-
-	for {
-		resp, err := it.Next()
-		// This doesn't work
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.WithError(err).Debug("iterating")
-			break
-		}
-
-		log.Debug(resp.Metric)
-		log.Debug(resp.Resource)
-
-		for _, point := range resp.Points {
-			value := int64(point.Value.GetInt64Value())
-			if _, ok := set[value]; ok {
-				set[value] += 1
-			} else {
-				set[value] = 1
-			}
-			points = append(points, point)
-		}
-	}
-
+func evaluateMemMetrics(matrix model.Matrix) *ContainerMetrics {
 	var data []int64
-	for k, _ := range set {
-		data = append(data, k)
+	for _, sampleStream := range matrix {
+		for _, sample := range sampleStream.Values {
+			data = append(data, int64(sample.Value))
+		}
+	}
+	if len(data) == 0 {
+		log.Warningf("Memory metrics data is empty, skipping evaluation.")
+		return nil // o qualunque valore tu voglia restituire in questo caso
 	}
 
-	sortPointsAsc(points)
-
+	sortPointsAsc(matrix)
 	min, max := MinMax_int64(data)
 	return &ContainerMetrics{
-		MetricType: v1.ResourceMemory,
-		MemoryLast: NewMemoryResource(points[0].Value.GetInt64Value()),
+		MetricType: k8sv1.ResourceMemory,
+		MemoryLast: NewMemoryResource(data[len(data)-1]),
 		MemoryMin:  NewMemoryResource(min),
 		MemoryMax:  NewMemoryResource(max),
-		MemoryMode: NewMemoryResource(mode_int64(set)),
-		DataPoints: int64(len(points)),
+		MemoryMode: NewMemoryResource(int64(len(data))),
+		DataPoints: int64(len(data)),
 	}
 }
 
-func evaluateCpuMetrics(it *monitoring.TimeSeriesIterator) *ContainerMetrics {
-	var points []*monitoringpb.Point
-
-	for {
-		resp, err := it.Next()
-		// This doesn't work
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			// probably isn't a critical error, see above
-			log.WithError(err).Debug("iterating")
-			break
-		}
-
-		log.Debug(resp.Metric)
-		log.Debug(resp.Resource)
-
-		for _, point := range resp.Points {
-			points = append(points, point)
-		}
-	}
-
-	sortPointsAsc(points)
-
+func evaluateCpuMetrics(matrix model.Matrix) *ContainerMetrics {
 	var data []int64
-
-	for i := 1; i < len(points); i++ {
-		cur := points[i]
-		prev := points[i-1]
-
-		interval := cur.Interval.EndTime.Seconds - prev.Interval.EndTime.Seconds
-
-		delta := float64(cur.Value.GetDoubleValue()) - float64(prev.Value.GetDoubleValue())
-		data = append(data, int64((delta/float64(interval))*1000))
+	for _, sampleStream := range matrix {
+		for i := 1; i < len(sampleStream.Values); i++ {
+			cur := sampleStream.Values[i]
+			prev := sampleStream.Values[i-1]
+			interval := cur.Timestamp.Sub(prev.Timestamp).Seconds()
+			delta := float64(cur.Value) - float64(prev.Value)
+			data = append(data, int64((delta/interval)*1000))
+		}
+	}
+	if len(data) == 0 {
+		log.Warningf("CPU metrics data is empty, skipping evaluation.")
+		return nil // o qualunque valore tu voglia restituire in questo caso
 	}
 
+	sortPointsAsc(matrix)
 	min, max := MinMax_int64(data)
-
 	return &ContainerMetrics{
-		MetricType: v1.ResourceCPU,
-		CpuLast:    NewCpuResource(data[0]),
+		MetricType: k8sv1.ResourceCPU,
+		CpuLast:    NewCpuResource(data[len(data)-1]),
 		CpuMin:     NewCpuResource(min),
 		CpuMax:     NewCpuResource(max),
 		CpuAvg:     NewCpuResource(int64(average_int64(data))),
-		DataPoints: int64(len(points)),
+		DataPoints: int64(len(data)),
 	}
 }
 
-func buildTimeSeriesFilter(m map[string]string) string {
-
-	// buffer := make([]string, len(m))
-	var buffer []string
-
-	for k, v := range m {
-		buffer = append(buffer, fmt.Sprintf("%s = \"%s\"", k, v))
-	}
-
-	return strings.Join(buffer, " AND ")
-}
-
-func (s *StackDriverClient) ListTimeSeries(filter_map map[string]string, duration time.Duration) *monitoring.TimeSeriesIterator {
-
-	filter := buildTimeSeriesFilter(filter_map)
-
-	log.Debug(filter)
-
-	end := time.Now().UTC()
+// ListMetrics function modified to fit the right query expression.
+func (p *PrometheusClient) ListMetrics(metricName, containerName, podName string, duration time.Duration) model.Matrix {
+	end := time.Now()
 	start := end.Add(-duration)
+	// Modification: Changed query from range vector to instant vector
+	query := fmt.Sprintf("%s{container=\"%s\", pod=\"%s\"}", metricName, containerName, podName)
 
-	req := &monitoringpb.ListTimeSeriesRequest{
-		Name:   fmt.Sprintf("projects/%s", s.project),
-		Filter: filter,
-		Interval: &monitoringpb.TimeInterval{
-			StartTime: &timestamp.Timestamp{
-				Seconds: start.Unix(),
-				Nanos:   int32(start.Nanosecond()),
-			},
-			EndTime: &timestamp.Timestamp{
-				Seconds: end.Unix(),
-				Nanos:   int32(end.Nanosecond()),
-			},
-		},
+	result, warnings, err := p.client.QueryRange(p.ctx, query, v1.Range{
+		Start: start,
+		End:   end,
+		Step:  time.Minute,
+	})
+
+	if err != nil {
+		log.WithError(err).Error("querying Prometheus")
+		return nil
 	}
 
-	return s.client.ListTimeSeries(s.ctx, req)
+	if len(warnings) > 0 {
+		log.Warn(warnings)
+	}
+
+	return result.(model.Matrix)
 }
 
-func (s *StackDriverClient) ContainerMetrics(container_name string, pod_uid string, duration time.Duration, metric_type v1.ResourceName) *ContainerMetrics {
-
+func (p *PrometheusClient) ContainerMetrics(containerName, podName string, duration time.Duration, metricType k8sv1.ResourceName) *ContainerMetrics {
 	var m *ContainerMetrics
-
-	filter := map[string]string{
-		"resource.label.container_name": container_name,
-		"resource.label.pod_id":         pod_uid,
+	switch metricType {
+	case k8sv1.ResourceCPU:
+		matrix := p.ListMetrics("container_cpu_usage_seconds_total", containerName, podName, duration)
+		m = evaluateCpuMetrics(matrix)
+	case k8sv1.ResourceMemory:
+		matrix := p.ListMetrics("container_memory_usage_bytes", containerName, podName, duration)
+		m = evaluateMemMetrics(matrix)
 	}
-
-	switch metric_type {
-	case v1.ResourceMemory:
-		filter["metric.type"] = "container.googleapis.com/container/memory/bytes_used"
-		filter["metric.label.memory_type"] = "non-evictable"
-		it := s.ListTimeSeries(filter, duration)
-		m = evaluateMemMetrics(it)
-	case v1.ResourceCPU:
-		filter["metric.type"] = "container.googleapis.com/container/cpu/usage_time"
-		it := s.ListTimeSeries(filter, duration)
-		m = evaluateCpuMetrics(it)
+	if m == nil {
+		return nil
 	}
-
-	m.ContainerName = container_name
+	m.ContainerName = containerName
 	return m
 }
 
-func (s *StackDriverClient) Run(jobs chan<- *MetricJob, collector <-chan *ContainerMetrics, pods []v1.Pod, duration time.Duration, metric_type v1.ResourceName) (metrics []*ContainerMetrics) {
-
+func (p *PrometheusClient) Run(jobs chan<- *MetricJob, collector <-chan *ContainerMetrics, pods []k8sv1.Pod, duration time.Duration, metricType k8sv1.ResourceName) (metrics []*ContainerMetrics) {
 	go func() {
 		for _, pod := range pods {
 			for _, container := range pod.Spec.Containers {
@@ -223,50 +153,60 @@ func (s *StackDriverClient) Run(jobs chan<- *MetricJob, collector <-chan *Contai
 					PodName:       pod.GetName(),
 					PodUID:        string(pod.ObjectMeta.UID),
 					Duration:      duration,
-					MetricType:    metric_type,
+					MetricType:    metricType,
 				}
 			}
 		}
 		close(jobs)
 	}()
-
 	for job := range collector {
 		metrics = append(metrics, job)
 	}
-
 	return
 }
 
-func (s *StackDriverClient) Worker(jobs <-chan *MetricJob, collector chan<- *ContainerMetrics) {
-
+func (p *PrometheusClient) Worker(jobs <-chan *MetricJob, collector chan<- *ContainerMetrics) {
 	for job := range jobs {
-		m := s.ContainerMetrics(job.ContainerName, job.PodUID, job.Duration, job.MetricType)
+		m := p.ContainerMetrics(job.ContainerName, job.PodName, job.Duration, job.MetricType)
+		if m == nil {
+			continue
+		}
 		m.PodName = job.PodName
 		collector <- m
 	}
-
 	close(collector)
 }
 
-func (k *KubeClient) Historical(project string, ctx context.Context, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
-
-	stackDriver := NewStackDriverClient(
-		project,
-	)
+func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespace string, workers int, resourceName k8sv1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+	promClient, err := NewPrometheusClient(promAddress)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	activePods, err := k.ActivePods(ctx, namespace, "")
 	if err != nil {
 		panic(err.Error())
 	}
-
+	log.Infof("Found %d active pods\n", len(activePods))
 	jobs := make(chan *MetricJob, workers)
 	collector := make(chan *ContainerMetrics)
-
 	for i := 0; i <= workers; i++ {
-		go stackDriver.Worker(jobs, collector)
+		go promClient.Worker(jobs, collector)
 	}
-
-	metrics := stackDriver.Run(jobs, collector, activePods, duration, resourceName)
+	metrics := promClient.Run(jobs, collector, activePods, duration, resourceName)
 	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse)
-	PrintContainerMetrics(rows, duration, dataPoints)
+
+	if csv {
+		prefix := "kube-resource-usage"
+		if namespace == "" {
+			prefix += "-all"
+		} else {
+			prefix += fmt.Sprintf("-%s", namespace)
+		}
+
+		filename := ExportCSV(prefix, rows)
+		fmt.Printf("Exported %d rows to %s\n", len(rows), filename)
+	} else {
+		PrintContainerMetrics(rows, duration, dataPoints)
+	}
 }

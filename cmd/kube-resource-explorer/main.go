@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,13 +36,12 @@ func main() {
 
 	var (
 		namespace  = flag.String("namespace", "", "filter by namespace (defaults to all)")
-		sort       = flag.String("sort", "CpuReq", "field to sort by")
+		sort       = flag.String("sort", "PodName", "field to sort by")
 		reverse    = flag.Bool("reverse", false, "reverse sort output")
 		historical = flag.Bool("historical", false, "show historical info")
 		duration   = flag.Duration("duration", default_duration, "specify the duration")
 		mem_only   = flag.Bool("mem", false, "show historical memory info")
 		cpu_only   = flag.Bool("cpu", false, "show historical cpu info")
-		project    = flag.String("project", "", "Project id")
 		workers    = flag.Int("workers", 5, "Number of workers for historical")
 		csv        = flag.Bool("csv", false, "Export results to csv file")
 		kubeconfig *string
@@ -73,10 +73,10 @@ func main() {
 
 	if *historical {
 
-		if *project == "" {
-			fmt.Printf("-project is required for historical data\n")
-			os.Exit(1)
-		}
+		//if *project == "" {
+		//	fmt.Printf("-project is required for historical data\n")
+		//	os.Exit(1)
+		//}
 
 		m := kube.ContainerMetrics{}
 
@@ -92,10 +92,11 @@ func main() {
 		} else if *cpu_only {
 			resourceName = v1.ResourceCPU
 		} else {
-			panic("Unknown metric type")
+			log.Errorf("Unknown metric type, please specify -mem or -cpu")
+			log.Exit(2)
 		}
 
-		k.Historical(*project, ctx, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		k.Historical("http://localhost:9091", ctx, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
 
 	} else {
 
