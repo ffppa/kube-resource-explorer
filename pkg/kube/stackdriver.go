@@ -248,13 +248,13 @@ func (s *StackDriverClient) Worker(jobs <-chan *MetricJob, collector chan<- *Con
 	close(collector)
 }
 
-func (k *KubeClient) Historical(project, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+func (k *KubeClient) Historical(project string, ctx context.Context, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
 
 	stackDriver := NewStackDriverClient(
 		project,
 	)
 
-	activePods, err := k.ActivePods(namespace, "")
+	activePods, err := k.ActivePods(ctx, namespace, "")
 	if err != nil {
 		panic(err.Error())
 	}

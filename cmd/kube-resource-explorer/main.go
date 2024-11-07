@@ -95,7 +95,7 @@ func main() {
 			panic("Unknown metric type")
 		}
 
-		k.Historical(*project, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		k.Historical(*project, ctx, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
 
 	} else {
 
