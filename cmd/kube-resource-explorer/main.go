@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ffppa/kube-resource-explorer/pkg/kube"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -35,16 +34,16 @@ func main() {
 	}
 
 	var (
-		namespace  = flag.String("namespace", "", "filter by namespace (defaults to all)")
-		sort       = flag.String("sort", "PodName", "field to sort by")
-		reverse    = flag.Bool("reverse", false, "reverse sort output")
-		historical = flag.Bool("historical", false, "show historical info")
-		duration   = flag.Duration("duration", default_duration, "specify the duration")
-		mem_only   = flag.Bool("mem", false, "show historical memory info")
-		cpu_only   = flag.Bool("cpu", false, "show historical cpu info")
-		workers    = flag.Int("workers", 5, "Number of workers for historical")
-		csv        = flag.Bool("csv", false, "Export results to csv file")
-		kubeconfig *string
+		namespace            = flag.String("namespace", "", "filter by namespace (defaults to all)")
+		sort                 = flag.String("sort", "CpuReq", "field to sort by")
+		reverse              = flag.Bool("reverse", false, "reverse sort output")
+		historical           = flag.Bool("historical", false, "show historical info")
+		duration             = flag.Duration("duration", default_duration, "specify the duration")
+		mem_only             = flag.Bool("mem", false, "show historical memory info")
+		cpu_only             = flag.Bool("cpu", false, "show historical cpu info")
+		prometheus_namespace = flag.String("prometheus_namespace", "monitoring", "select the prometheus namespace")
+		csv                  = flag.Bool("csv", false, "Export results to csv file")
+		kubeconfig           *string
 	)
 
 	if kubeenv := os.Getenv("KUBECONFIG"); kubeenv != "" {
@@ -73,10 +72,16 @@ func main() {
 
 	if *historical {
 
-		//if *project == "" {
-		//	fmt.Printf("-project is required for historical data\n")
-		//	os.Exit(1)
-		//}
+		promCurrentPod, err := k.GetCurrentPrometheusPod(*prometheus_namespace)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		promAddress, err := k.PrometheusForwarder(config, promCurrentPod, *prometheus_namespace)
+		if err != nil {
+			log.Errorf("Error starting prometheus forwarder: %s", err)
+			os.Exit(1)
+		}
 
 		m := kube.ContainerMetrics{}
 
@@ -96,7 +101,7 @@ func main() {
 			log.Exit(2)
 		}
 
-		k.Historical("http://localhost:9091", ctx, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		k.Historical(promAddress, ctx, *namespace, resourceName, *duration, *sort, *reverse, *csv)
 
 	} else {
 

@@ -1,7 +1,6 @@
 package kube
 
 import (
-	"fmt"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -12,13 +11,12 @@ func TestMemoryResource(t *testing.T) {
 	m := NewMemoryResource(2 * 1024 * 1024)
 
 	if r.Value() != m.Value() {
-		t.Errorf("error")
+		t.Errorf("Expected %v, got %v", r.Value(), m.Value())
 	}
 
-	fmt.Printf("%v\n", m.ToQuantity())
+	t.Logf("MemoryResource Quantity: %v", m.ToQuantity())
 
 	if r.Value() != m.ToQuantity().Value() {
-		t.Errorf("error")
+		t.Errorf("Expected %v, got %v", r.Value(), m.ToQuantity().Value())
 	}
-
 }
