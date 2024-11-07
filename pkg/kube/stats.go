@@ -3,6 +3,9 @@ package kube
 import "sort"
 
 func MinMax_int64(array []int64) (int64, int64) {
+	if len(array) == 0 {
+		return 0, 0
+	}
 	var max int64 = array[0]
 	var min int64 = array[0]
 	for _, value := range array {

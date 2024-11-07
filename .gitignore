@@ -1,2 +1,4 @@
 build
 kube-resource-explorer
+vendor/**
+.idea
