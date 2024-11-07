@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"context"
 	"fmt"
 
 	api_v1 "k8s.io/api/core/v1"
@@ -21,7 +22,7 @@ func NewKubeClient(
 	}
 }
 
-func (k *KubeClient) ActivePods(namespace, nodeName string) ([]api_v1.Pod, error) {
+func (k *KubeClient) ActivePods(ctx context.Context, namespace, nodeName string) ([]api_v1.Pod, error) {
 
 	selector := fmt.Sprintf("status.phase!=%s,status.phase!=%s", string(api_v1.PodSucceeded), string(api_v1.PodFailed))
 	if nodeName != "" {
@@ -33,9 +34,10 @@ func (k *KubeClient) ActivePods(namespace, nodeName string) ([]api_v1.Pod, error
 		return nil, err
 	}
 
-	activePods, err := k.clientset.Core().Pods(
+	activePods, err := k.clientset.CoreV1().Pods(
 		namespace,
 	).List(
+		ctx,
 		metav1.ListOptions{FieldSelector: fieldSelector.String()},
 	)
 	if err != nil {
@@ -52,7 +54,7 @@ func containerRequestsAndLimits(container *api_v1.Container) (reqs api_v1.Resour
 		if _, ok := reqs[name]; ok {
 			panic(fmt.Sprintf("Duplicate key: %s", name))
 		} else {
-			reqs[name] = *quantity.Copy()
+			reqs[name] = quantity.DeepCopy()
 		}
 	}
 
@@ -60,7 +62,7 @@ func containerRequestsAndLimits(container *api_v1.Container) (reqs api_v1.Resour
 		if _, ok := limits[name]; ok {
 			panic(fmt.Sprintf("Duplicate key: %s", name))
 		} else {
-			limits[name] = *quantity.Copy()
+			limits[name] = quantity.DeepCopy()
 		}
 	}
 	return
@@ -74,15 +76,15 @@ func NodeCapacity(node *api_v1.Node) api_v1.ResourceList {
 	return allocatable
 }
 
-func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*ContainerResources, err error) {
+func (k *KubeClient) NodeResources(ctx context.Context, namespace, nodeName string) (resources []*ContainerResources, err error) {
 
-	mc := k.clientset.Core().Nodes()
-	node, err := mc.Get(nodeName, metav1.GetOptions{})
+	mc := k.clientset.CoreV1().Nodes()
+	node, err := mc.Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	activePodsList, err := k.ActivePods(namespace, nodeName)
+	activePodsList, err := k.ActivePods(ctx, namespace, nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +126,14 @@ func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*Con
 	return resources, nil
 }
 
-func (k *KubeClient) ContainerResources(namespace string) (resources []*ContainerResources, err error) {
-	nodes, err := k.clientset.CoreV1().Nodes().List(metav1.ListOptions{})
+func (k *KubeClient) ContainerResources(ctx context.Context, namespace string) (resources []*ContainerResources, err error) {
+	nodes, err := k.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	for _, node := range nodes.Items {
-		nodeUsage, err := k.NodeResources(namespace, node.GetName())
+		nodeUsage, err := k.NodeResources(ctx, namespace, node.GetName())
 		if err != nil {
 			return nil, err
 		}
@@ -141,8 +143,8 @@ func (k *KubeClient) ContainerResources(namespace string) (resources []*Containe
 	return resources, nil
 }
 
-func (k *KubeClient) ClusterCapacity() (capacity api_v1.ResourceList, err error) {
-	nodes, err := k.clientset.CoreV1().Nodes().List(metav1.ListOptions{})
+func (k *KubeClient) ClusterCapacity(ctx context.Context) (capacity api_v1.ResourceList, err error) {
+	nodes, err := k.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +160,7 @@ func (k *KubeClient) ClusterCapacity() (capacity api_v1.ResourceList, err error)
 				value.Add(quantity)
 				capacity[name] = value
 			} else {
-				capacity[name] = *quantity.Copy()
+				capacity[name] = quantity.DeepCopy()
 			}
 		}
 
@@ -167,14 +169,14 @@ func (k *KubeClient) ClusterCapacity() (capacity api_v1.ResourceList, err error)
 	return capacity, nil
 }
 
-func (k *KubeClient) ResourceUsage(namespace, sort string, reverse bool, csv bool) {
+func (k *KubeClient) ResourceUsage(ctx context.Context, namespace, sort string, reverse bool, csv bool) {
 
-	resources, err := k.ContainerResources(namespace)
+	resources, err := k.ContainerResources(ctx, namespace)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	capacity, err := k.ClusterCapacity()
+	capacity, err := k.ClusterCapacity(ctx)
 	if err != nil {
 		panic(err.Error())
 	}

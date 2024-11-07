@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -8,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dpetzold/kube-resource-explorer/pkg/kube"
+	"github.com/ffppa/kube-resource-explorer/pkg/kube"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/clientcmd"
@@ -55,6 +56,8 @@ func main() {
 	}
 
 	flag.Parse()
+
+	ctx := context.Background()
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
@@ -103,6 +106,6 @@ func main() {
 			os.Exit(1)
 		}
 
-		k.ResourceUsage(*namespace, *sort, *reverse, *csv)
+		k.ResourceUsage(ctx, *namespace, *sort, *reverse, *csv)
 	}
 }
