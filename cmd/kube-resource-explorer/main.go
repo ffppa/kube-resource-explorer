@@ -27,6 +27,8 @@ func homeDir() string {
 }
 
 func main() {
+	log.SetLevel(log.InfoLevel)
+	log.SetOutput(os.Stdout)
 
 	default_duration, err := time.ParseDuration("4h")
 	if err != nil {

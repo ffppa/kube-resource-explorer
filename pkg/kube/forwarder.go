@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"io"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/portforward"
@@ -11,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 )
 
 func (k *KubeClient) PrometheusForwarder(config *rest.Config, prometheusPodName string, prometheusNamespace string) (string, error) {
@@ -90,8 +90,8 @@ func prometheusPortForward(config *rest.Config, namespace, podName string, local
 		ports,
 		stopCh,
 		readyCh,
-		os.Stdout,
-		os.Stderr,
+		io.Discard, // Quiet stdout
+		io.Discard, // Quiet stderr
 	)
 
 	if err != nil {
@@ -108,10 +108,8 @@ func (k *KubeClient) GetCurrentPrometheusPod(namespace string) (string, error) {
 	}
 
 	for _, pod := range pods.Items {
-		for _, container := range pod.Spec.Containers {
-			if container.Name == "prometheus" { // TODO capire come selezionare dinamicamente il prometheus
-				return pod.Name, nil
-			}
+		if contains(pod.Name, "prometheus-server") {
+			return pod.Name, nil
 		}
 	}
 

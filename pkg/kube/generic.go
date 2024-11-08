@@ -19,3 +19,7 @@ func GetField(r interface{}, field string) interface{} {
 	f := reflect.Indirect(v).FieldByName(field)
 	return f.Interface()
 }
+
+func contains(str, substr string) bool {
+	return len(str) >= len(substr) && str[:len(substr)] == substr
+}
