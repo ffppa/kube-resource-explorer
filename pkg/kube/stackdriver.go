@@ -59,7 +59,7 @@ func evaluateMemMetrics(matrix model.Matrix) *ContainerMetrics {
 	}
 	if len(data) == 0 {
 		log.Warningf("Memory metrics data is empty, skipping evaluation.")
-		return nil // o qualunque valore tu voglia restituire in questo caso
+		return nil
 	}
 
 	sortPointsAsc(matrix)
@@ -177,7 +177,7 @@ func (p *PrometheusClient) Worker(jobs <-chan *MetricJob, collector chan<- *Cont
 	close(collector)
 }
 
-func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespace string, workers int, resourceName k8sv1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespace string, resourceName k8sv1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
 	promClient, err := NewPrometheusClient(promAddress)
 	if err != nil {
 		panic(err.Error())
@@ -188,11 +188,9 @@ func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespa
 		panic(err.Error())
 	}
 	log.Infof("Found %d active pods\n", len(activePods))
-	jobs := make(chan *MetricJob, workers)
+	jobs := make(chan *MetricJob)
 	collector := make(chan *ContainerMetrics)
-	for i := 0; i <= workers; i++ {
-		go promClient.Worker(jobs, collector)
-	}
+	go promClient.Worker(jobs, collector)
 	metrics := promClient.Run(jobs, collector, activePods, duration, resourceName)
 	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse)
 
