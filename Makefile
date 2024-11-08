@@ -15,4 +15,4 @@ run:
 	docker run --rm -it \
 		-v${HOME}/.kube:/.kube \
 		-v/etc/ssl/certs:/etc/ssl/certs \
-		dpetzold/kube-resource-explorer
+		kube-resource-explorer
