@@ -1,20 +1,6 @@
 Resource Explorer
 ================
 
-[![CircleCI](https://circleci.com/gh/dpetzold/kube-resource-explorer.svg?style=svg)](https://circleci.com/gh/dpetzold/kube-resource-explorer)
-
-
-Explore your kube resource usage and allocation.
-
-* Display historical statistical resource usage from StackDriver.
-
-  https://github.com/kubernetes/kubernetes/issues/55046
-
-* List resource QoS allocation to pods in a cluster. Inspired by:
-
-  https://github.com/kubernetes/kubernetes/issues/17512
-
-
 ## Usage
 
 ## Command Line Options                                                                                                
@@ -25,29 +11,12 @@ Explore your kube resource usage and allocation.
 * `-cpu` - Show historical cpu data
 * `-mem` - Show historical memory data
 * `-duration` - The duration to use for historical data (default to 4h)
-* `-project` - The GCloud project id (required for historical)
-* `-workers` - Number of workers to run for historical
+* `-prometheus_namespace` - Select the prometheus namespace (default: monitoring)
 * `-csv` - Export results to CSV file
-
-To use the historical functionality you must set the
-`GOOGLE_APPLICATION_CREDENTIALS` environment variable. See below for more
-information:
-
-https://cloud.google.com/monitoring/docs/reference/libraries
-
-
-## Run
-```
-docker run -it \
-    -v${HOME}/.kube:/.kube \
-    -v${HOME}/.config/gcloud:/.config/gcloud \
-    -v/etc/ssl/certs:/etc/ssl/certs \
-    dpetzold/kube-resource-explorer
-```
 
 ## Build
 ```
-go get github.com/dpetzold/kube-resource-explorer/cmd/kube-resource-explorer
+make build
 ```
 
 ## Example output
