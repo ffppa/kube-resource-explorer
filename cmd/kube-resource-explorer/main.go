@@ -44,6 +44,7 @@ func main() {
 		mem_only             = flag.Bool("mem", false, "show historical memory info")
 		cpu_only             = flag.Bool("cpu", false, "show historical cpu info")
 		prometheus_namespace = flag.String("prometheus_namespace", "monitoring", "select the prometheus namespace")
+		prometheus_pod       = flag.String("prometheus_pod", "prometheus-server", "select the prometheus pod")
 		csv                  = flag.Bool("csv", false, "Export results to csv file")
 		kubeconfig           *string
 	)
@@ -74,7 +75,7 @@ func main() {
 
 	if *historical {
 
-		promCurrentPod, err := k.GetCurrentPrometheusPod(*prometheus_namespace)
+		promCurrentPod, err := k.GetCurrentPrometheusPod(*prometheus_namespace, *prometheus_pod)
 		if err != nil {
 			panic(err.Error())
 		}

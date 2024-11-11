@@ -101,17 +101,17 @@ func prometheusPortForward(config *rest.Config, namespace, podName string, local
 	return pf.ForwardPorts()
 }
 
-func (k *KubeClient) GetCurrentPrometheusPod(namespace string) (string, error) {
+func (k *KubeClient) GetCurrentPrometheusPod(namespace string, podArgv string) (string, error) {
 	pods, err := k.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return "", err
 	}
 
 	for _, pod := range pods.Items {
-		if contains(pod.Name, "prometheus-server") {
+		if contains(pod.Name, podArgv) {
 			return pod.Name, nil
 		}
 	}
 
-	return "", fmt.Errorf("no pod with container %s found in namespace %s", "prometheus-server", namespace)
+	return "", fmt.Errorf("no pod with container %s found in namespace %s", podArgv, namespace)
 }
