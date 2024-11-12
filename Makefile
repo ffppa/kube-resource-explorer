@@ -9,10 +9,12 @@ build: $(GO_SOURCE_FILES)
 		-o kube-resource-explorer ./cmd/kube-resource-explorer
 
 docker-build:
-	docker build --rm -t kube-resource-explorer .
+	docker build -t kube-resource-explorer .
 
 run:
 	docker run --rm -it \
-		-v${HOME}/.kube:/.kube \
-		-v/etc/ssl/certs:/etc/ssl/certs \
+		-v ${HOME}/.kube:/root/.kube \
+		-v ${HOME}/.azure:/root/.azure \
+		-v /etc/ssl/certs:/etc/ssl/certs \
+		--network host \
 		kube-resource-explorer
