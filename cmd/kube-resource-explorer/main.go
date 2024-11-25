@@ -46,6 +46,7 @@ func main() {
 		prometheus_namespace = flag.String("prometheus_namespace", "monitoring", "select the prometheus namespace")
 		prometheus_pod       = flag.String("prometheus_pod", "prometheus-server", "select the prometheus pod")
 		csv                  = flag.Bool("csv", false, "Export results to csv file")
+		advise               = flag.Bool("advise", false, "Show Req/Lim advice")
 		kubeconfig           *string
 	)
 
@@ -104,7 +105,7 @@ func main() {
 			log.Exit(2)
 		}
 
-		k.Historical(promAddress, ctx, *namespace, resourceName, *duration, *sort, *reverse, *csv)
+		k.Historical(promAddress, ctx, *namespace, resourceName, *duration, *sort, *reverse, *csv, *advise)
 
 	} else {
 
