@@ -177,7 +177,7 @@ func (p *PrometheusClient) Worker(jobs <-chan *MetricJob, collector chan<- *Cont
 	close(collector)
 }
 
-func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespace string, resourceName k8sv1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespace string, resourceName k8sv1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool, advise bool) {
 	promClient, err := NewPrometheusClient(promAddress)
 	if err != nil {
 		panic(err.Error())
@@ -192,7 +192,7 @@ func (k *KubeClient) Historical(promAddress string, ctx context.Context, namespa
 	collector := make(chan *ContainerMetrics)
 	go promClient.Worker(jobs, collector)
 	metrics := promClient.Run(jobs, collector, activePods, duration, resourceName)
-	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse)
+	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse, advise)
 
 	if csv {
 		prefix := "kube-resource-usage"

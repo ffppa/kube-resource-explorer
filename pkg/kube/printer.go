@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -171,7 +172,30 @@ func PrintResourceUsage(rows [][]string) {
 	fmt.Println(columnize.SimpleFormat(formatted))
 }
 
-func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1.ResourceName, duration time.Duration, field string, reverse bool) (rows [][]string, total int64) {
+func AdvisingMultiple(metric string, suffix string) string {
+	RequestStr := strings.TrimSuffix(metric, suffix)
+	number, err := strconv.Atoi(RequestStr)
+	if err != nil {
+		log.Fatalln("Error converting request metric to int: %v", err)
+	}
+	square := number * 2
+	return fmt.Sprintf("%d%s", square, suffix)
+}
+
+func CalculateAdvise(metrics []string, metric_type v1.ResourceName) (row string) {
+
+	var suffix string
+	switch metric_type {
+	case v1.ResourceMemory:
+		suffix = "Mi"
+	case v1.ResourceCPU:
+		suffix = "m"
+	}
+
+	return fmt.Sprintf("%s/%s", AdvisingMultiple(metrics[0], suffix), AdvisingMultiple(metrics[2], suffix))
+}
+
+func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1.ResourceName, duration time.Duration, field string, reverse bool, advise bool) (rows [][]string, total int64) {
 
 	sort.Slice(containerMetrics, func(i, j int) bool {
 		return cmp(containerMetrics, field, i, j, reverse)
@@ -186,10 +210,17 @@ func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1
 		mode_or_avg = "Avg"
 	}
 
-	rows = append(rows, [][]string{
-		{"Pod/Container", "Last", "Min", "Max", mode_or_avg},
-		{"-------------------------------------------------------------", "------", "------", "------", " --------"},
-	}...)
+	if advise {
+		rows = append(rows, [][]string{
+			{"Pod/Container", "Last", "Min", "Max", mode_or_avg, "Advise Req/Lim"},
+			{"-------------------------------------------------------------", "------", "------", "------", " --------", "---------------"},
+		}...)
+	} else {
+		rows = append(rows, [][]string{
+			{"Pod/Container", "Last", "Min", "Max", mode_or_avg},
+			{"-------------------------------------------------------------", "------", "------", "------", " --------"},
+		}...)
+	}
 
 	for _, m := range containerMetrics {
 		row := []string{
@@ -197,6 +228,9 @@ func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1
 		}
 		s := m.toSlice()
 		row = append(row, s...)
+		if advise {
+			row = append(row, CalculateAdvise(s, metric_type))
+		}
 		rows = append(rows, row)
 		total += m.DataPoints
 	}
