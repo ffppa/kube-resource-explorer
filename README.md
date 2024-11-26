@@ -5,6 +5,7 @@ Resource Explorer
 
 ## Command Line Options                                                                                                
 * `-namespace` - Limit the query to the specified namespace (defaults to all)
+* `-context` - Select k8s context
 * `-sort` - Field to sort by
 * `-reverse` - Reserve the sort order
 * `-historical` - Display historical resource data
@@ -12,7 +13,9 @@ Resource Explorer
 * `-mem` - Show historical memory data
 * `-duration` - The duration to use for historical data (default to 4h)
 * `-prometheus_namespace` - Select the prometheus namespace (default: monitoring)
+* `prometheus_pod` - Select the prometheus pod (default: prometheus-server)
 * `-csv` - Export results to CSV file
+* `-advise` - Show Request/Limit advice
 
 ## Build
 ```
