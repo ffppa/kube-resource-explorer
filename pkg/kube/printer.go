@@ -176,7 +176,7 @@ func AdvisingMultiple(metric string, suffix string) string {
 	RequestStr := strings.TrimSuffix(metric, suffix)
 	number, err := strconv.Atoi(RequestStr)
 	if err != nil {
-		log.Fatalln("Error converting request metric to int: %v", err)
+		log.Fatalf("Error converting request metric to int: %v\n", err)
 	}
 	square := number * 2
 	return fmt.Sprintf("%d%s", square, suffix)

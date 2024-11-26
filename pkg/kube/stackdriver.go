@@ -24,7 +24,7 @@ func NewPrometheusClient(address string) (*PrometheusClient, error) {
 		Address: address,
 	})
 	if err != nil {
-		log.Fatal("Failed to create Prometheus client: %s", err)
+		log.Fatalf("Failed to create Prometheus client: %s", err)
 	}
 
 	return &PrometheusClient{
